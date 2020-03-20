@@ -14,13 +14,15 @@
 #include "glext.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
 
 #ifndef DEBUG
 #define NUMFUNCS 58
-extern void *msys_oglfunc[NUMFUNCS];
+extern void* msys_oglfunc[NUMFUNCS];
 #else
 #define NUMFUNCS 60
-extern void *msys_oglfunc[NUMFUNCS];
+extern void* msys_oglfunc[NUMFUNCS];
 #endif
 
 
@@ -88,13 +90,13 @@ extern void *msys_oglfunc[NUMFUNCS];
 #define glGetProgramInfoLog     ((PFNGLGETPROGRAMINFOLOGPROC)msys_oglfunc[59])
 #endif
 
-struct shader_id{
+struct shader_id {
 	int fsid;
 	int vsid;
 	unsigned int pid;
 };
 
-struct FBOELEM{
+struct FBOELEM {
 	GLuint fbo;
 	GLuint depthbuffer;
 	GLuint texture;
@@ -102,19 +104,37 @@ struct FBOELEM{
 	GLint status;
 };
 
+typedef struct
+{
+	bool font;
+	int xsize, ysize;
+	int x, y;
+	int font_size;
+	int letter;
+	int numrows;
+	int numcolumns;
+	int numletters;
+	GLuint texture;
+	struct shader_id program;
+	GLuint vbo, vao;
+	float rcol, gcol, bcol, acol;
+} sprite_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-
-
-// init
-int msys_glextInit( void );
-struct shader_id initShader(const char *vsh, const char *fsh);
-void Resize(int x, int y);
-unsigned char *LoadImageMemory(unsigned char* data, int size, int * width, int * height);
-GLuint loadTexMemory(unsigned char* data, int size, int * width, int * height, int blur);
-struct FBOELEM init_fbo(int width, int height, BOOL shit);
+	// init
+	int msys_glextInit(void);
+	struct shader_id initShader(const char* vsh, const char* fsh);
+	void Resize(int x, int y);
+	unsigned char* LoadImageMemory(unsigned char* data, int size, int* width, int* height);
+	GLuint loadTexMemory(unsigned char* data, int size, int* width, int* height, int blur);
+	struct FBOELEM init_fbo(int width, int height, BOOL shit);
+	void draw_font(int positionx, int positiony, int xres, int yres, char* buffer);
+	void init_fontwriter();
+	void draw_sprite(sprite_t* fon, int xres, int yres, int x, int y);
+	void init_sprite(sprite_t* spr, uint8_t* data, int data_len);
 #ifdef __cplusplus
 }
 #endif

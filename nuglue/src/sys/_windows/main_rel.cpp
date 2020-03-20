@@ -235,7 +235,7 @@ BOOL CALLBACK DlgFunc1(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam){
 				ress[nRes].w = d.dmPelsWidth;
 				ress[nRes].h = d.dmPelsHeight;
 				nRes++;
-				_snprintf(s, 500, "%d * %d", d.dmPelsWidth, d.dmPelsHeight);
+				wsprintf(s,"%d * %d", d.dmPelsWidth, d.dmPelsHeight);
 				SendDlgItemMessage(hWnd, IDC_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)s);
 			}
 		}

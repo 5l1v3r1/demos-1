@@ -57,7 +57,7 @@ double sync_get_val(const struct sync_track *t, double row)
 	case KEY_RAMP:
 		return key_ramp(t->keys + idx, row);
 	default:
-		assert(0);
+		//assert(0);
 		return 0.0f;
 	}
 }
@@ -78,7 +78,7 @@ int sync_find_key(const struct sync_track *t, int row)
 		else
 			return mi; /* exact hit */
 	}
-	assert(lo == hi);
+//	assert(lo == hi);
 
 	/* return first key after row, negated and biased (to allow -0) */
 	return -lo - 1;

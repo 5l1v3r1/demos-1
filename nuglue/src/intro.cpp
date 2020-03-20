@@ -24,7 +24,7 @@ int intro_init( int xr, int yr, int nomusic, IntroProgressDelegate *pd )
 	fontspr.rcol = 255;
 	fontspr.gcol = 255;
 	fontspr.bcol = 255;
-	init_sprite(&fontspr);
+	init_sprite(&fontspr,NULL,0);
 	font_fbo = init_fbo(asset_xr, asset_yr, false);
 	pd->func(pd->obj, 100);
     pd->func( pd->obj, 200 );

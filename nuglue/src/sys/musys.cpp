@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "musys.h"
+#define GB_MATH_IMPLEMENTATION
+#include "gb_math.h"
 
 int rand_range(int min_n, int max_n);
 float rand_rangef(float a, float b);
@@ -159,7 +161,7 @@ float rand_rangef(float a, float b)
 	return ((b-a)*((float)rand()/RAND_MAX))+a;
 }
 
-int msys_init( uint64_t h )
+int msys_init()
 {
     if( !msys_glextInit() ) return 0;
 

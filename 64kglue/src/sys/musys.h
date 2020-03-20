@@ -20,9 +20,11 @@ static int asset_yr = 720;
 #include <math.h>
 #include <mmsystem.h>
 #include <stdint.h>
-#include "msys_glext.h"
+#include "gb_math.h"
+#include "musys_gl.h"
 
-int  msys_init( uint64_t h );
+
+int  msys_init( );
 void msys_end( void );
 
 static HWND window_handle;

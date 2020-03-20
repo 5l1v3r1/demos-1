@@ -10,17 +10,14 @@
     <ClCompile Include="src\intro.cpp">
       <Filter>intro</Filter>
     </ClCompile>
-    <ClCompile Include="src\sys\device.c">
-      <Filter>intro\rocket</Filter>
-    </ClCompile>
-    <ClCompile Include="src\sys\track.c">
-      <Filter>intro\rocket</Filter>
-    </ClCompile>
     <ClCompile Include="src\sys\musys_gl.cpp">
       <Filter>core</Filter>
     </ClCompile>
     <ClCompile Include="src\sys\musys.cpp">
       <Filter>core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\sys\rocket_intf.c">
+      <Filter>intro\rocket</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -37,20 +34,14 @@
       <Filter>intro</Filter>
     </ClInclude>
     <ClInclude Include="resource.h" />
-    <ClInclude Include="src\sys\base.h">
-      <Filter>intro\rocket</Filter>
-    </ClInclude>
-    <ClInclude Include="src\sys\device.h">
-      <Filter>intro\rocket</Filter>
-    </ClInclude>
-    <ClInclude Include="src\sys\track.h">
-      <Filter>intro\rocket</Filter>
-    </ClInclude>
     <ClInclude Include="src\sys\musys.h">
       <Filter>core</Filter>
     </ClInclude>
     <ClInclude Include="src\sys\musys_gl.h">
       <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\sys\rocket_intf.h">
+      <Filter>intro\rocket</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

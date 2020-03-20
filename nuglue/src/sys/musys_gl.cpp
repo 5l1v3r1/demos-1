@@ -1,5 +1,15 @@
-﻿#include "sys/msys.h"
-#include "intro.h"
+#define WIN32_LEAN_AND_MEAN
+#define WIN32_EXTRA_LEAN
+#include <windows.h>
+#include <objidl.h>
+#include <gdiplus.h>
+using namespace Gdiplus;
+
+#include <string.h>
+#include "musys.h"
+
+//--- d a t a ---------------------------------------------------------------
+#include "musys_gl.h"
 
 size_t font_len = 507;
 unsigned char font[507] =
@@ -55,21 +65,6 @@ unsigned char font[507] =
 
 typedef struct
 {
-	bool font;
-	int xsize, ysize;
-	int font_size;
-	int letter;
-	int numrows;
-	int numcolumns;
-	int numletters;
-	GLuint texture;
-	shader_id program;
-	GLuint vbo, vao;
-	float rcol, gcol, bcol, acol;
-}sprite_t;
-
-typedef struct
-{
 	float	x;
 	float   y;
 	float   z;
@@ -107,22 +102,186 @@ const char  font_pixel[] =
 "FragColor=texture2D(mytexture,coords)*color;"
 "}";
 
+sprite_t textwriter;
+sprite_t textwriter_bw;
+
+
+static char *funcs[] = {
+"glActiveTexture",
+"glCompressedTexImage2D",
+"glCompressedTexSubImage2D",
+"glGetCompressedTexImage",
+"glBlendFuncSeparate",
+"glBindBuffer",
+"glDeleteBuffers",
+"glGenBuffers",
+"glIsBuffer",
+"glBufferData",
+"glBufferSubData",
+"glGetBufferSubData",
+"glMapBuffer",
+"glUnmapBuffer",
+"glGetBufferParameteriv",
+"glGetBufferPointerv",
+"glBlendEquationSeparate",
+"glDrawBuffers",
+"glStencilOpSeparate",
+"glStencilFuncSeparate",
+"glStencilMaskSeparate",
+"glBindAttribLocation",
+"glDisableVertexAttribArray",
+"glEnableVertexAttribArray",
+"glGetAttribLocation",
+"glGetUniformLocation",
+"glVertexAttribPointer",
+"glClampColor",
+"glBindFragDataLocation",
+"glGetFragDataLocation",
+"glFramebufferTexture",
+"glIsRenderbuffer",
+"glBindRenderbuffer",
+"glDeleteRenderbuffers",
+"glGenRenderbuffers",
+"glRenderbufferStorage",
+"glGetRenderbufferParameteriv",
+"glIsFramebuffer",
+"glBindFramebuffer",
+"glDeleteFramebuffers",
+"glGenFramebuffers",
+"glCheckFramebufferStatus",
+"glFramebufferTexture2D",
+"glFramebufferRenderbuffer",
+"glGetFramebufferAttachmentParameteriv",
+"glGenerateMipmap",
+"glBlitFramebuffer",
+"glBindVertexArray",
+"glDeleteVertexArrays",
+"glGenVertexArrays",
+"glCreateShaderProgramv",
+"glGenProgramPipelines",
+"glBindProgramPipeline",
+"glUseProgramStages",
+"glProgramUniform4fv",
+"glProgramUniform1i",
+"glProgramUniformMatrix4fv",
+"glGetProgramResourceLocation",
+#ifdef DEBUG
+"glGetProgramiv",
+"glGetProgramInfoLog",
+#endif
+
+};
+static HMODULE libgl;
+void *msys_oglfunc[NUMFUNCS];
+
+#define LOAD_ENTRYPOINT(name, var, type) \
+    if (!var) \
+		    { \
+        var = reinterpret_cast<type>(wglGetProcAddress(name)); \
+		    }
+
+//--- c o d e ---------------------------------------------------------------
+
+int msys_glextInit( void )
+{
+	GdiplusStartupInput gdiplusStartupInput;
+	ULONG_PTR           gdiplusToken;
+	// Initialize GDI+.
+	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+	for (int i = 0; i <NUMFUNCS; i++)
+	{
+		msys_oglfunc[i] = wglGetProcAddress(funcs[i]);
+		if (!msys_oglfunc[i])
+		return(0);	
+	}
+	return 1;
+}
+inline void* __cdecl  operator new(size_t size) { return(malloc((uint32_t)size)); }
+inline void __cdecl  operator delete[](void* ptr,size_t size) { free(ptr); }
+inline void __cdecl  operator delete(void* ptr, size_t size) { free(ptr); }
+
+unsigned char *LoadImageMemory(unsigned char* data, int size, int * width, int * height){
+	IStream* pStream;
+	HRESULT hr;
+	using namespace Gdiplus;
+	HGLOBAL hMem = ::GlobalAlloc(GMEM_MOVEABLE, size);
+	LPVOID pImage = ::GlobalLock(hMem);
+	CopyMemory(pImage, data, size);
+	if (::CreateStreamOnHGlobal(hMem, FALSE, &pStream) != S_OK)
+	return 0;
+	else
+	{
+		Bitmap *pBitmap = Bitmap::FromStream(pStream,false);   //FAILS on WIN32
+		*width = pBitmap->GetWidth();
+		*height = pBitmap->GetHeight();
+		int pitch = ((*width * 32 + 31) & ~31) >> 3;
+		BitmapData data2;
+		Gdiplus::Rect rect(0, 0, *width, *height);
+		unsigned char* pixels = (GLubyte *)malloc(pitch * *height);
+		memset(pixels, 0, pitch* *height);
+		if (pBitmap->LockBits(&rect, ImageLockModeRead, PixelFormat32bppARGB, &data2) != Gdiplus::Ok)
+			return 0;
+		//ARGB to RGBA
+		uint8_t *p = static_cast<uint8_t *>(data2.Scan0);
+		for (int y = 0; y < *height; y++)
+			for (int x = 0; x < *width; x++)
+			{
+				uint8_t tmp = p[2];
+				p[2] = p[0];
+				p[0] = tmp;
+				p += 4;
+			}
+		if (data2.Stride == pitch)
+		{
+			memcpy(pixels, data2.Scan0, pitch * *height);
+		}
+		else
+		{
+			for (int i = 0; i < *height; ++i)
+				memcpy(&pixels[i * pitch], &p[i * data2.Stride], pitch);
+		}
+		pBitmap->UnlockBits(&data2);
+		//image is now in RGBA
+		delete[] pBitmap;
+		GlobalUnlock(hMem);
+		GlobalFree(hMem);
+		return pixels;
+	}
+}
+
+
+GLuint loadTexMemory(unsigned char* data, int size,int * width, int * height,int blur){
+	unsigned char* pixels = LoadImageMemory(data, size, width, height);
+	GLuint texture;
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, blur ? GL_LINEAR : GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, blur ? GL_LINEAR : GL_NEAREST);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, *width, *height, 0,
+		GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+	free(pixels);
+	return texture;
+}
+
+
+
 void init_sprite(sprite_t* spr, uint8_t* data, int data_len)
 {
 	int width, height;
-	spr->texture = loadTexMemory(data,data_len, &width, &height, false);
+	if(data_len)
+	spr->texture = loadTexMemory(data, data_len, &width, &height, false);
 	glGenVertexArrays(1, &spr->vao);
 	glBindVertexArray(spr->vao);
 	glGenBuffers(1, &spr->vbo);
 	spr->program = initShader(font_vertex, (const char*)font_pixel);
 }
 
-void draw_sprite(sprite_t * fon, int xres, int yres, int x, int y)
+void draw_sprite(sprite_t* fon, int xres, int yres, int x, int y)
 {
 	glBindProgramPipeline(fon->program.pid);
-	gbMat4 projection,m_transform,mvp;
+	gbMat4 projection, m_transform, mvp;
 	float  tX = 0;
-	if(!fon->font) fon->xsize / 2.0f;
+	if (!fon->font) fon->xsize / 2.0f;
 	float  tY = 0;
 	if (!fon->font) fon->ysize / 2.0f;
 	gb_mat4_ortho2d(&projection, 0.0, (float)xres, (float)yres, 0.0);
@@ -167,7 +326,7 @@ void draw_sprite(sprite_t * fon, int xres, int yres, int x, int y)
 			}
 
 		}
-		float fFrame_s = ((1.0f / fon->xsize) * (fon->font_size  * fon->numcolumns)) / fon->numcolumns;
+		float fFrame_s = ((1.0f / fon->xsize) * (fon->font_size * fon->numcolumns)) / fon->numcolumns;
 		float fFrame_t = ((1.0f / fon->ysize) * (fon->font_size * fon->numrows)) / fon->numrows;
 		float fLowerLeft_s = m_nCurrentColumn * fFrame_s;
 		float fLowerRight_t = 1.0f - (m_nCurrentRow * fFrame_t) - fFrame_t;
@@ -191,42 +350,7 @@ void draw_sprite(sprite_t * fon, int xres, int yres, int x, int y)
 	glDisable(GL_BLEND);
 	glBindProgramPipeline(0);
 }
-sprite_t textwriter;
-sprite_t textwriter_bw;
 
-
-
-void init_fonts()
-{
-	textwriter.ysize = 96;
-	textwriter.xsize = 128;
-	textwriter.font_size = 16;
-	textwriter.numletters = 64;
-	textwriter.numcolumns = 8;
-	textwriter.numrows = 6;
-	textwriter.rcol = 1. / 1.0 * 255;
-	textwriter.gcol = 1. / 1.0 * 255;
-	textwriter.bcol = 1. / 1.0 * 255;
-	textwriter.acol = 255;
-	init_font(&textwriter);
-
-	textwriter_bw.ysize = 96;
-	textwriter_bw.xsize = 128;
-	textwriter_bw.font_size = 16;
-	textwriter_bw.numletters = 64;
-	textwriter_bw.numcolumns = 8;
-	textwriter_bw.numrows = 6;
-	textwriter_bw.rcol = 0. / 1.0 * 255;
-	textwriter_bw.gcol = 0. / 1.0 * 255;
-	textwriter_bw.bcol = 0. / 1.0 * 255;
-	textwriter_bw.acol = 255;
-	init_font(&textwriter_bw);
-
-}
-
-
-
-//Customize according to each prod/typeface as needed
 int gettablepos(char c)
 {
 	int pos;
@@ -250,7 +374,33 @@ int gettablepos(char c)
 	return pos;
 }
 
-void draw_font(int positionx, int positiony, char* buffer)
+void init_fontwriter()
+{
+	textwriter.ysize = 96;
+	textwriter.xsize = 128;
+	textwriter.font_size = 16;
+	textwriter.numletters = 64;
+	textwriter.numcolumns = 8;
+	textwriter.numrows = 6;
+	textwriter.rcol = 1. / 1.0 * 255;
+	textwriter.gcol = 1. / 1.0 * 255;
+	textwriter.bcol = 1. / 1.0 * 255;
+	textwriter.acol = 255;
+	init_sprite(&textwriter, font, font_len);
+	textwriter_bw.ysize = 96;
+	textwriter_bw.xsize = 128;
+	textwriter_bw.font_size = 16;
+	textwriter_bw.numletters = 64;
+	textwriter_bw.numcolumns = 8;
+	textwriter_bw.numrows = 6;
+	textwriter_bw.rcol = 0. / 1.0 * 255;
+	textwriter_bw.gcol = 0. / 1.0 * 255;
+	textwriter_bw.bcol = 0. / 1.0 * 255;
+	textwriter_bw.acol = 255;
+	init_sprite(&textwriter_bw, font, font_len);
+}
+
+void draw_font(int positionx, int positiony,int xres,int yres, char* buffer)
 {
 	int l = strlen((char*)buffer);
 
@@ -265,8 +415,8 @@ void draw_font(int positionx, int positiony, char* buffer)
 		textwriter.letter = gettablepos(c);
 		textwriter_bw.letter = gettablepos(c);
 
-		draw_font(&textwriter_bw, letpos2, positiony2);
-		draw_font(&textwriter, letpos, positiony);
+		draw_sprite(&textwriter_bw,xres,yres, letpos2, positiony2);
+		draw_sprite(&textwriter,xres,yres, letpos, positiony);
 
 		switch (c)
 		{
@@ -293,7 +443,7 @@ void draw_font(int positionx, int positiony, char* buffer)
 				letpos += 32;
 				letpos2 += 32;
 			}
-			
+
 			break;
 		case 'L':
 			if (buffer[a + 1] == 'I' || buffer[a + 1] == 'L' || buffer[a + 1] == 'D')
@@ -323,4 +473,83 @@ void draw_font(int positionx, int positiony, char* buffer)
 		}
 
 	}
+}
+
+
+#include <sys/stat.h>
+unsigned char *readShaderFile( const char *fileName )
+{
+	FILE *file = fopen( fileName, "r" );
+	long size;
+	if( file == NULL )
+	{
+		MessageBox( NULL, "Cannot open shader file!", "ERROR",
+			MB_OK | MB_ICONEXCLAMATION );
+		return 0;
+	}
+	fseek (file, 0, SEEK_END);   // non-portable
+	size=ftell (file);
+	fseek (file, 0, SEEK_SET);   // non-portable
+	unsigned char *buffer = new unsigned char[size];
+	int bytes = fread( buffer, 1, size, file );
+	buffer[bytes] = 0;
+	fclose( file );
+	return buffer;
+}
+
+
+shader_id initShader(const char *vsh, const char *fsh)
+{
+	shader_id shad = { 0 };
+	shad.vsid = glCreateShaderProgramv(GL_VERTEX_SHADER, 1, &vsh);
+	shad.fsid = glCreateShaderProgramv(GL_FRAGMENT_SHADER, 1, &fsh);
+	glGenProgramPipelines(1, &shad.pid);
+	glBindProgramPipeline(shad.pid);
+	glUseProgramStages(shad.pid, GL_VERTEX_SHADER_BIT, shad.vsid);
+	glUseProgramStages(shad.pid, GL_FRAGMENT_SHADER_BIT, shad.fsid);
+#ifdef DEBUG
+	int		result;
+	char    info[1536];
+	glGetProgramiv(shad.vsid, GL_LINK_STATUS, &result); glGetProgramInfoLog(shad.vsid, 1024, NULL, (char *)info); if (!result) DebugBreak();
+	glGetProgramiv(shad.fsid, GL_LINK_STATUS, &result); glGetProgramInfoLog(shad.fsid, 1024, NULL, (char *)info); if (!result) DebugBreak();
+	glGetProgramiv(shad.pid, GL_LINK_STATUS, &result); glGetProgramInfoLog(shad.pid, 1024, NULL, (char *)info); if (!result) DebugBreak();
+#endif
+	glBindProgramPipeline(0);
+	return shad;
+}
+
+FBOELEM init_fbo(int width, int height, BOOL fp)
+{
+	FBOELEM elem = {0};
+	int current, enderr = 1;
+	GLuint error = 0;
+	glGenFramebuffers(1, &elem.fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, elem.fbo);
+	glGenRenderbuffers(1, &elem.depthbuffer);
+	glBindRenderbuffer (GL_RENDERBUFFER,elem.depthbuffer);
+	glRenderbufferStorage (GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
+	glFramebufferRenderbuffer (GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, elem.depthbuffer);
+	glGenTextures (1, &elem.texture);
+	glBindTexture (GL_TEXTURE_2D, elem.texture);
+	glTexParameteri (GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri (GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexImage2D (GL_TEXTURE_2D, 0, fp?GL_RGB32F:GL_RGBA8,  width, height, 0, GL_RGBA,fp?GL_FLOAT: GL_UNSIGNED_BYTE, NULL);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, elem.texture, 0);
+
+	// check if everything was ok with our requests above.
+	error = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if (error != GL_FRAMEBUFFER_COMPLETE) {
+		FBOELEM err = {0};
+		elem.status = 0;
+		enderr = 0;
+		return err;
+	}
+	elem.status = 1;
+	// set Rendering Device to screen again.
+	glBindTexture(GL_TEXTURE_2D,0);
+	glBindFramebuffer (GL_FRAMEBUFFER, 0);
+	glBindRenderbuffer(GL_RENDERBUFFER, 0);
+	return elem;
 }
